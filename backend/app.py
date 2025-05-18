@@ -1,4 +1,4 @@
-from flask import Flask, redirect, url_for, session
+from flask import Flask, redirect, url_for, session, jsonify
 from authlib.integrations.flask_client import OAuth
 from authlib.common.security import generate_token
 import os
@@ -6,17 +6,13 @@ import os
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-
 oauth = OAuth(app)
-
 nonce = generate_token()
-
 
 oauth.register(
     name=os.getenv('OIDC_CLIENT_NAME'),
     client_id=os.getenv('OIDC_CLIENT_ID'),
     client_secret=os.getenv('OIDC_CLIENT_SECRET'),
-    #server_metadata_url='http://dex:5556/.well-known/openid-configuration',
     authorization_endpoint="http://localhost:5556/auth",
     token_endpoint="http://dex:5556/token",
     jwks_uri="http://dex:5556/keys",
@@ -42,8 +38,7 @@ def login():
 def authorize():
     token = oauth.flask_app.authorize_access_token()
     nonce = session.get('nonce')
-
-    user_info = oauth.flask_app.parse_id_token(token, nonce=nonce)  # or use .get('userinfo').json()
+    user_info = oauth.flask_app.parse_id_token(token, nonce=nonce)
     session['user'] = user_info
     return redirect('/')
 
@@ -51,6 +46,11 @@ def authorize():
 def logout():
     session.clear()
     return redirect('/')
+
+# ✅ NYT API key route (used by frontend to fetch NYT articles)
+@app.route('/api/key')
+def get_key():
+    return jsonify({'apiKey': os.getenv('NYT_API_KEY')})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8000)
