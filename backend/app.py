@@ -1,6 +1,8 @@
-from flask import Flask, redirect, url_for, session, jsonify
+from flask import Flask, redirect, url_for, session, jsonify, request
 from authlib.integrations.flask_client import OAuth
 from authlib.common.security import generate_token
+from pymongo import MongoClient
+from datetime import datetime
 import os
 
 app = Flask(__name__)
@@ -20,6 +22,11 @@ oauth.register(
     device_authorization_endpoint="http://dex:5556/device/code",
     client_kwargs={'scope': 'openid email profile'}
 )
+
+# ✅ MongoDB connection with auth
+mongo = MongoClient("mongodb://root:example@mongo:27017/")
+db = mongo["nyt"]
+comments = db["comments"]
 
 @app.route('/')
 def home():
@@ -47,10 +54,56 @@ def logout():
     session.clear()
     return redirect('/')
 
-# ✅ NYT API key route (used by frontend to fetch NYT articles)
 @app.route('/api/key')
 def get_key():
     return jsonify({'apiKey': os.getenv('NYT_API_KEY')})
+
+# ✅ New route: check who is logged in
+@app.route('/api/user')
+def get_user():
+    if 'user' in session:
+        return jsonify(session['user'])
+    return jsonify(None), 401
+
+# ✅ Submit comment
+@app.route('/api/comments', methods=['POST'])
+def post_comment():
+    user = session.get('user')
+    if not user:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    article_url = data.get('article_url')
+    text = data.get('text')
+
+    if not article_url or not text:
+        return jsonify({'error': 'Missing data'}), 400
+
+    comment = {
+        "article_url": article_url,
+        "author_email": user["email"],
+        "text": text,
+        "timestamp": datetime.utcnow()
+    }
+
+    comments.insert_one(comment)
+    return jsonify({'status': 'ok'}), 201
+
+# ✅ Get comments for article
+@app.route('/api/comments', methods=['GET'])
+def get_comments():
+    url = request.args.get('url')
+    if not url:
+        return jsonify([])
+
+    result = comments.find({"article_url": url}).sort("timestamp", -1)
+    return jsonify([
+        {
+            "author_email": c["author_email"],
+            "text": c["text"],
+            "timestamp": c["timestamp"].isoformat()
+        } for c in result
+    ])
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8000)
