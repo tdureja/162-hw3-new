@@ -1,0 +1,3 @@
+1. used chatgpt for definitions, conceptual help, necessary libraries for certain functions etc. 
+2. used it occassionally for help on syntax stuff and exploring the capabilities of certain libraries etc.
+3. we thought it was pretty helpful and accurate. makes the learning process a little quicker

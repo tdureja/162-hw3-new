@@ -23,10 +23,11 @@ oauth.register(
     client_kwargs={'scope': 'openid email profile'}
 )
 
-# ✅ MongoDB connection with auth
 mongo = MongoClient("mongodb://root:example@mongo:27017/")
 db = mongo["nyt"]
 comments = db["comments"]
+
+MODERATOR_EMAILS = os.getenv("MODERATOR_EMAILS", "").split(",")
 
 @app.route('/')
 def home():
@@ -58,14 +59,12 @@ def logout():
 def get_key():
     return jsonify({'apiKey': os.getenv('NYT_API_KEY')})
 
-# ✅ New route: check who is logged in
 @app.route('/api/user')
 def get_user():
     if 'user' in session:
         return jsonify(session['user'])
     return jsonify(None), 401
 
-# ✅ Submit comment
 @app.route('/api/comments', methods=['POST'])
 def post_comment():
     user = session.get('user')
@@ -83,13 +82,13 @@ def post_comment():
         "article_url": article_url,
         "author_email": user["email"],
         "text": text,
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.utcnow(),
+        "moderated": False
     }
 
     comments.insert_one(comment)
     return jsonify({'status': 'ok'}), 201
 
-# ✅ Get comments for article
 @app.route('/api/comments', methods=['GET'])
 def get_comments():
     url = request.args.get('url')
@@ -99,11 +98,25 @@ def get_comments():
     result = comments.find({"article_url": url}).sort("timestamp", -1)
     return jsonify([
         {
+            "id": str(c["_id"]),
             "author_email": c["author_email"],
-            "text": c["text"],
+            "text": "COMMENT REMOVED BY MODERATOR!" if c.get("moderated") else c["text"],
             "timestamp": c["timestamp"].isoformat()
         } for c in result
     ])
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8000)
+@app.route('/api/moderate', methods=['POST'])
+def moderate_comment():
+    user = session.get('user')
+    if not user or user["email"] not in MODERATOR_EMAILS:
+        return jsonify({"error": "Forbidden"}), 403
+
+    data = request.get_json()
+    comment_id = data.get("id")
+
+    if not comment_id:
+        return jsonify({"error": "Missing comment ID"}), 400
+
+    from bson.objectid import ObjectId
+    comments.update_one({"_id": ObjectId(comment_id)}, {"$set": {"moderated": True}})
+    return jsonify({"status": "moderated"})

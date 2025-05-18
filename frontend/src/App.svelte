@@ -9,6 +9,7 @@
   let commentInputs: Record<string, string> = {};
   let commentLists: Record<string, any[]> = {};
   let posting: Record<string, boolean> = {};
+  let isModerator = false;
 
   const deduplicateArticles = (articles: any[]): any[] => {
     const seen = new Set();
@@ -108,6 +109,18 @@
     posting[url] = false;
   };
 
+  const deleteComment = async (url: string, timestamp: string) => {
+    const res = await fetch('/api/comments/moderate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ article_url: url, timestamp })
+    });
+
+    if (res.ok) {
+      await fetchComments(url);
+    }
+  };
+
   onMount(async () => {
     try {
       const res = await fetch('/api/key');
@@ -119,11 +132,12 @@
       loading = false;
     }
 
-    // ✅ Proper login detection
     try {
       const res = await fetch('/api/user');
       if (res.ok) {
-        user = await res.json();
+        const data = await res.json();
+        user = data;
+        isModerator = user?.email?.includes('mod') || false;
       }
     } catch {
       user = null;
@@ -207,6 +221,14 @@
                   <strong>{c.author_email}</strong>
                   <em> ({new Date(c.timestamp).toLocaleString()})</em><br>
                   {c.text}
+                  {#if isModerator}
+                    <button
+                      style="margin-left: 8px; font-size: 0.75rem;"
+                      on:click={() => deleteComment(article.web_url, c.timestamp)}
+                    >
+                      Remove
+                    </button>
+                  {/if}
                 </li>
               {/each}
             </ul>

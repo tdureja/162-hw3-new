@@ -4,3 +4,5 @@ flask-cors==4.0.0
 pymongo==4.6.1
 authlib
 requests
+pytest
+werkzeug==2.3.8
